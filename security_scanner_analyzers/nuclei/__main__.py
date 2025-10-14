@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-from security_scanner_parsers.nuclei.nuclei import main
+from security_scanner_analyzers.nuclei.nuclei import main
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Scan a JSON file and count severity levels.")

@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-from security_scanner_parsers.cloudsploit.parser import main
+from security_scanner_analyzers.cloudsploit.parser import main
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Process a CloudSploit JSON report.")

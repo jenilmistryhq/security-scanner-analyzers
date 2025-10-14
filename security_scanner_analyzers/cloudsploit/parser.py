@@ -1,4 +1,4 @@
-from security_scanner_parsers.utils import load_json, generate_report, send_to_slack
+from security_scanner_analyzers.utils import load_json, generate_report, send_to_slack
 
 
 def cloudsploit_count_field(data, field_name, skip_values=["ok"]):
