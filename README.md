@@ -1,1 +1,1 @@
-# security-scanner-parsers
+# security-scanner-analyzers
