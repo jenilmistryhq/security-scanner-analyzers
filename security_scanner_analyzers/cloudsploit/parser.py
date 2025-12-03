@@ -1,5 +1,5 @@
 from collections import Counter
-from security_scanner_analyzers.utils import load_json, generate_report, send_to_slack
+from security_scanner_analyzers.utils import load_json, load_yaml, generate_report, send_to_slack
 
 def cloudsploit_count_field(data, field_name, skip_values=["ok"]):
     count_dict = {}
@@ -10,17 +10,22 @@ def cloudsploit_count_field(data, field_name, skip_values=["ok"]):
         count_dict[value] = count_dict.get(value, 0) + 1
     return count_dict
 
-def summarize_failures(data):
+def summarize_failures(data, whitelist):
     """
-    Analyzes the JSON to find what actually failed.
+    Analyzes the JSON to find what actually failed, respecting the whitelist.
     Returns a formatted string for Slack.
     """
-    # Filter for only failed items
-    failed_items = [item for item in data if item.get("status", "").lower() == "fail"]
+    
+    # Filter for only failed items AND ensure the item's plugin is NOT in whitelist
+    failed_items = [
+        item for item in data 
+        if item.get("status", "").lower() == "fail"
+        and item.get("plugin", "") not in whitelist
+    ]
     
     if not failed_items:
-        return "\n:white_check_mark: No failures detected."
-
+        return "\n:white_check_mark: No failures detected (after applying whitelist rules)."
+        
     # 1. Group by Category (e.g., IAM, EC2, S3)
     categories = [item.get("category", "Unknown") for item in failed_items]
     cat_counts = Counter(categories)
@@ -47,29 +52,40 @@ def summarize_failures(data):
 
     return "\n".join(details)
 
-def main(file_path, slack_url=None):
+def main(file_path, slack_url, config_file_path):
+    # 1. Load the Configuration File
+    config = load_yaml(config_file_path)
+    
+    # Nested structure: whitelist -> cloudsploit -> plugin
+    whitelist = config.get("whitelist", {}).get("cloudsploit", {}).get("plugin", [])
+
+    # 2. Load the CloudSploit Report Data
     data = load_json(file_path)
     
-    # 1. Get the basic stats
-    status_count = cloudsploit_count_field(data, "status")
+    # 3. Filter the data based on whitelist for the base count
+    filtered_data = [
+        item for item in data
+        if item.get("plugin", "") not in whitelist
+    ]
+    
+    # 4. Generate the basic status report using filtered data
+    status_count = cloudsploit_count_field(filtered_data, "status")
     base_report = generate_report(":cloud: CloudSploit Status Report", status_count)
     
-    # 2. Generate the detailed breakdown
-    detailed_analysis = summarize_failures(data)
+    # 5. Generate the detailed breakdown using the whitelist list
+    detailed_analysis = summarize_failures(data, whitelist)
     
-    # 3. Combine them
+    # 6. Combine them
     full_report = f"{base_report}\n{detailed_analysis}"
 
-    # 4. Decide: Send to Slack OR Print to Console
+    # 7. Send or Print
     if slack_url:
-        # Slack has a message size limit (~4000 chars), but usually handles lists well.
-        # If it fails to send, it might be too long.
         send_to_slack(slack_url, full_report)
         print("Success: Report sent to Slack.")
     else:
         # Local Preview
         print("\n" + "="*40)
-        print("   LOCAL PREVIEW (NOT SENT TO SLACK)")
+        print("    LOCAL PREVIEW (NOT SENT TO SLACK)")
         print("="*40)
         print(full_report)
         print("="*40 + "\n")

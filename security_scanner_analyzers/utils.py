@@ -2,9 +2,10 @@ import os
 import json
 from requests import post
 from datetime import datetime
-
+import yaml
 
 def load_json(file_path):
+    """Loads a JSON file."""
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     with open(file_path, "r", encoding="utf-8") as f:
@@ -13,6 +14,17 @@ def load_json(file_path):
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON format: {e}")
 
+
+def load_yaml(file_path):
+    """Loads a YAML file and returns the content as a Python dictionary."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Config file not found: {file_path}")
+    with open(file_path, "r", encoding="utf-8") as f:
+        try:
+            # Use safe_load for security when loading configuration files
+            return yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML format: {e}")
 
 
 def generate_report(title, count_dict, format='%Y-%m-%d %H:%M:%S'):
