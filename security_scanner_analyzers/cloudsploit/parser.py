@@ -2,6 +2,9 @@ from collections import Counter
 from security_scanner_analyzers.utils import load_json, load_yaml, generate_report, send_to_slack
 
 def cloudsploit_count_field(data, field_name, skip_values=["ok"]):
+    """
+    Counts occurrences of a field (e.g., status) in the provided data list.
+    """
     count_dict = {}
     for item in data:
         value = item.get(field_name, "unknown").lower()
@@ -10,27 +13,25 @@ def cloudsploit_count_field(data, field_name, skip_values=["ok"]):
         count_dict[value] = count_dict.get(value, 0) + 1
     return count_dict
 
-def summarize_failures(data, whitelist):
+def summarize_failures(data):
     """
-    Analyzes the JSON to find what actually failed, respecting the whitelist.
-    Returns a formatted string for Slack.
+    Analyzes the JSON to find what actually failed.
+    Note: 'data' passed here MUST be already filtered/cleaned of whitelist items.
     """
-    
-    # Filter for only failed items AND ensure the item's plugin is NOT in whitelist
+    # Filter for only failed items
     failed_items = [
         item for item in data 
         if item.get("status", "").lower() == "fail"
-        and item.get("plugin", "") not in whitelist
     ]
     
     if not failed_items:
         return "\n:white_check_mark: No failures detected (after applying whitelist rules)."
-        
-    # 1. Group by Category (e.g., IAM, EC2, S3)
+
+    # Group by Category
     categories = [item.get("category", "Unknown") for item in failed_items]
     cat_counts = Counter(categories)
     
-    # 2. Get Unique Failing Plugins (deduplicated)
+    # Get Unique Failing Plugins
     failing_plugins = {item.get("plugin", "Unknown") for item in failed_items}
 
     # Build the text report
@@ -42,11 +43,10 @@ def summarize_failures(data, whitelist):
     for cat, count in cat_counts.most_common():
         details.append(f"• {cat}: {count}")
 
-    # Add specific failing rules (UNLIMITED LIST)
+    # Add specific failing rules
     details.append(f"\n*Unique Failing Rules ({len(failing_plugins)}):*")
     sorted_plugins = sorted(list(failing_plugins))
     
-    # Loop through ALL plugins without slicing [:15]
     plugin_list = "\n".join([f"• {p}" for p in sorted_plugins])
     details.append(plugin_list)
 
@@ -58,22 +58,26 @@ def main(file_path, slack_url, config_file_path):
     
     # Nested structure: whitelist -> cloudsploit -> plugin
     whitelist = config.get("whitelist", {}).get("cloudsploit", {}).get("plugin", [])
+    if whitelist is None: 
+        whitelist = [] # Safety check
 
     # 2. Load the CloudSploit Report Data
-    data = load_json(file_path)
+    raw_data = load_json(file_path)
     
-    # 3. Filter the data based on whitelist for the base count
-    filtered_data = [
-        item for item in data
+    # 3. GLOBAL FILTER: Create a clean dataset immediately
+    # We explicitly exclude any item where the 'plugin' is in the whitelist.
+    clean_data = [
+        item for item in raw_data 
         if item.get("plugin", "") not in whitelist
     ]
-    
-    # 4. Generate the basic status report using filtered data
-    status_count = cloudsploit_count_field(filtered_data, "status")
+
+    # 4. Generate the basic status report (Warn/Fail counts) using ONLY clean_data
+    status_count = cloudsploit_count_field(clean_data, "status")
     base_report = generate_report(":cloud: CloudSploit Status Report", status_count)
     
-    # 5. Generate the detailed breakdown using the whitelist list
-    detailed_analysis = summarize_failures(data, whitelist)
+    # 5. Generate the detailed breakdown using ONLY clean_data
+    # Because clean_data has NO whitelisted items, the category counts MUST reflect that.
+    detailed_analysis = summarize_failures(clean_data)
     
     # 6. Combine them
     full_report = f"{base_report}\n{detailed_analysis}"
